@@ -20,6 +20,14 @@ async def upload_to_catbox(file_url: str, max_retries: int = 3) -> str | None:
                         if attempt == max_retries: return None
                         await asyncio.sleep(2)
                         continue
+                    
+                    # Check file size (Catbox limit is 200MB, we use 195MB to be safe)
+                    max_size_bytes = 195 * 1024 * 1024
+                    content_length = resp.headers.get('Content-Length')
+                    if content_length and int(content_length) > max_size_bytes:
+                        log.warning(f"File too large to mirror ({int(content_length) / 1024 / 1024:.2f} MB): {file_url}")
+                        return None
+
                     file_data = await resp.read()
 
                 # Upload to Catbox
