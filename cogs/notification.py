@@ -1,6 +1,7 @@
 import os
 import aiosqlite
 import discord
+from typing import Union
 from discord import app_commands
 from discord.ext import commands
 from tweety import Twitter
@@ -40,15 +41,15 @@ class Notification(Cog_Extension):
         account_used=[app_commands.Choice(name=account_name, value=account_name) for account_name, _ in get_accounts().items()]
     )
     @app_commands.rename(enable_type='type')
-    async def notifier(self, itn: discord.Interaction, username: str, channel: discord.TextChannel, mention: discord.Role = None, enable_type: str = '11', media_type: str = '11', account_used: str = list(get_accounts().keys())[0]):
+    async def notifier(self, itn: discord.Interaction, username: str, channel: Union[discord.TextChannel, discord.Thread], mention: discord.Role = None, enable_type: str = '11', media_type: str = '11', account_used: str = list(get_accounts().keys())[0]):
         """Add a twitter user to specific channel on your server.
 
         Parameters
         -----------
         username: str
             The username of the twitter user you want to turn on notifications for.
-        channel: discord.TextChannel
-            The channel to which the bot delivers notifications.
+        channel: Union[discord.TextChannel, discord.Thread]
+            The channel or forum thread to which the bot delivers notifications.
         mention: discord.Role
             The role to mention when notifying.
         enable_type: str
@@ -164,7 +165,7 @@ class Notification(Cog_Extension):
             The username of the twitter user you want to turn off notifications for.
         """
 
-        channel = itn.guild.get_channel(int(channel_id))
+        channel = itn.guild.get_channel(int(channel_id)) or itn.guild.get_thread(int(channel_id))
         if channel is None: channel = UnknownChannel('unknown', int(channel_id))
         await itn.response.defer(ephemeral=True)
 
@@ -235,7 +236,7 @@ class Notification(Cog_Extension):
         default: bool
             Whether to use default setting.
         """
-        channel = itn.guild.get_channel(int(channel_id))
+        channel = itn.guild.get_channel(int(channel_id)) or itn.guild.get_thread(int(channel_id))
         if channel is None: channel = UnknownChannel('unknown', int(channel_id))
         
         async with aiosqlite.connect(os.path.join(os.getenv('DATA_PATH'), 'tracked_accounts.db')) as db:
@@ -286,10 +287,10 @@ class Notification(Cog_Extension):
                 ''', (str(itn.guild_id),))
                 result = []
                 async for row in cursor:
-                    channel = itn.guild.get_channel(int(row['id']))
+                    channel = itn.guild.get_channel(int(row['id'])) or itn.guild.get_thread(int(row['id']))
                     if channel: result.append(channel)
                     elif include_unknown: result.append(UnknownChannel('unknown', int(row['id'])))
-                return [app_commands.Choice(name=f'# {channel.name}', value=str(channel.id)) if isinstance(channel, discord.TextChannel) else 
+                return [app_commands.Choice(name=f'# {channel.name}', value=str(channel.id)) if isinstance(channel, (discord.TextChannel, discord.Thread)) else 
                         app_commands.Choice(name=f'# unknown ({channel.id})', value=str(channel.id))
                         for channel in result if input_channel.lower().replace("#", "") in channel.name.lower()]
 

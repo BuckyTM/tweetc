@@ -16,6 +16,9 @@ auto_unfollow: true
 
 auto_repair_mismatched_clients: false
 
+mirror_media:
+  enabled: false
+
 embed:
   type: 'built_in'
 

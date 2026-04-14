@@ -19,12 +19,28 @@ async def gen_embed(tweet: Tweet) -> list[discord.Embed]:
         return [embed]
     elif len(tweet.media) > 1:
         if configs['embed']['built_in']['fx_image']:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(re.sub(r'twitter', r'fxtwitter', tweet.url)) as response:
-                    raw = await response.text()
-            fximage_url = BeautifulSoup(raw, 'html.parser').find('meta', property='og:image')['content']
-            embed.set_image(url=fximage_url)
-            return [embed]
+            try:
+                async with aiohttp.ClientSession() as session:
+                    # Use fxtwitter for embeds. Handle twitter.com and x.com
+                    fx_url = re.sub(r'(?:twitter|x)\.com', 'fxtwitter.com', tweet.url)
+                    async with session.get(fx_url) as response:
+                        if response.status == 200:
+                            raw = await response.text()
+                            soup = BeautifulSoup(raw, 'html.parser')
+                            # Try og:image first, then twitter:image
+                            meta_tag = soup.find('meta', property='og:image') or soup.find('meta', attrs={'name': 'twitter:image'})
+                            
+                            if meta_tag and meta_tag.get('content'):
+                                 fximage_url = meta_tag['content']
+                                 embed.set_image(url=fximage_url)
+                                 return [embed]
+            except Exception:
+                pass
+            
+            # Fallback if fximage fails or response is not 200
+            imgs_embed = [discord.Embed(url=tweet.url).set_image(url=media.media_url_https) for media in tweet.media]
+            imgs_embed.insert(0, embed)
+            return imgs_embed
         else:
             imgs_embed = [discord.Embed(url=tweet.url).set_image(url=media.media_url_https) for media in tweet.media]
             imgs_embed.insert(0, embed)
