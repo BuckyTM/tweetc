@@ -150,7 +150,7 @@ class AccountTracker():
 
             if first_cycle:
                 first_cycle = False
-                log.info(f"skipped {len(lastest_tweets)} tweet(s) for {username} on first cycle after startup to prevent re-notification")
+                log.info(f"skipped {len(latest_tweets)} tweet(s) for {username} on first cycle after startup to prevent re-notification")
                 continue
 
             user = None
