@@ -11,6 +11,7 @@ from tweety import Twitter
 
 from configs.load_configs import configs
 from src.log import setup_logger
+from src.notification.catbox import upload_to_catbox
 from src.notification.display_tools import gen_embed, get_action
 from src.notification.get_tweets import get_tweets
 from src.notification.utils import is_match_media_type, is_match_type, replace_emoji
@@ -75,7 +76,7 @@ class AccountTracker():
 
         # Initial user list for notification tasks
         for (username, client_used), _ in self.latest_tweet_timestamps.items():
-            self.bot.loop.create_task(self.notification(username, client_used)).set_name(username)
+            self.bot.loop.create_task(self.notification(username, client_used, skip_first_cycle=True)).set_name(username)
         
         self.bot.loop.create_task(self.tasksMonitor()).set_name('TasksMonitor')
 
@@ -85,14 +86,26 @@ class AccountTracker():
             try:
                 async with connect_readonly(self.db_path) as db:
                     async with db.execute('SELECT username, client_used, latest_tweet FROM user WHERE enabled = 1') as cursor:
-                        new_timestamps = {}
+                        db_timestamps = {}
                         async for row in cursor:
-                            new_timestamps[(row[0], row[1])] = row[2]
-                        self.latest_tweet_timestamps = new_timestamps
-                
+                            db_timestamps[(row[0], row[1])] = row[2]
+
                 if not self.timestamps_ready.is_set():
+                    # First load: set the entire dictionary
+                    self.latest_tweet_timestamps = db_timestamps
                     self.timestamps_ready.set()
                     log.info("initial tweet timestamps loaded")
+                else:
+                    # Subsequent loads: merge carefully to avoid overwriting
+                    # fresher in-memory values with stale DB values.
+                    # 1) Add any new users from DB that we don't have yet
+                    for key, db_ts in db_timestamps.items():
+                        if key not in self.latest_tweet_timestamps:
+                            self.latest_tweet_timestamps[key] = db_ts
+                    # 2) Remove users no longer in the DB (disabled/deleted)
+                    for key in list(self.latest_tweet_timestamps.keys()):
+                        if key not in db_timestamps:
+                            del self.latest_tweet_timestamps[key]
 
             except Exception as e:
                 log.error(f"error in timestamp_updater: {e}")
@@ -113,7 +126,8 @@ class AccountTracker():
             except Exception as e:
                 log.error(f"error in db_writer: {e}")
 
-    async def notification(self, username: str, client_used: str):
+    async def notification(self, username: str, client_used: str, skip_first_cycle: bool = False):
+        first_cycle = skip_first_cycle
         while True:
             await asyncio.sleep(configs['tweets_check_period'])
 
@@ -125,6 +139,7 @@ class AccountTracker():
 
             latest_tweets = await get_tweets(self.tweets[client_used], username, last_tweet_at)
             if not latest_tweets:
+                first_cycle = False
                 continue
             
             newest_timestamp = latest_tweets[-1].created_on
@@ -132,6 +147,11 @@ class AccountTracker():
             self.latest_tweet_timestamps[(username, client_used)] = str(newest_timestamp)
             # Queue the database update
             await self.db_write_queue.put((username, newest_timestamp))
+
+            if first_cycle:
+                first_cycle = False
+                log.info(f"skipped {len(lastest_tweets)} tweet(s) for {username} on first cycle after startup to prevent re-notification")
+                continue
 
             user = None
             notifications = []
@@ -164,6 +184,20 @@ class AccountTracker():
 
             for tweet in latest_tweets:
                 log.info(f'find a new tweet from {username}')
+                mirror_embeds = []
+                if configs.get('mirror_media', {}).get('enabled', False) and tweet.media:
+                    for media in tweet.media:
+                        if media.type == 'photo':
+                            catbox_url = await upload_to_catbox(media.media_url_https)
+                            if catbox_url:
+                                embed = discord.Embed(title="Mirrored Image", url=catbox_url, description=f"[Link to image]({catbox_url})")
+                                embed.set_image(url=catbox_url)
+                                mirror_embeds.append(embed)
+
+                url = tweet.url
+                url = re.sub(r'(?:twitter|x)\.com', f'{DOMAIN_NAME}.com', url)
+                if EMBED_TYPE == 'proxy' and AUTO_TRANSLATION['enabled']:
+                    url += f"/{AUTO_TRANSLATION['default_language']}"
                 
                 view, create_view = None, False
                 if bool(tweet.media) and tweet.media[0].type == 'video' and EMBED_TYPE == 'built_in' and configs['embed']['built_in']['video_link_button']:
@@ -178,7 +212,14 @@ class AccountTracker():
                     view.add_item(discord.ui.Button(label=button_label, style=discord.ButtonStyle.link, url=button_url))
                 
                 for data in notifications:
-                    channel = self.bot.get_channel(int(data['channel_id']))
+                    channel_id = int(data['channel_id'])
+                    channel = self.bot.get_channel(channel_id)
+                    if channel is None:
+                        # Threads (e.g. forum posts) aren't returned by get_channel
+                        for guild in self.bot.guilds:
+                            channel = guild.get_thread(channel_id)
+                            if channel is not None:
+                                break
                     if channel is not None and is_match_type(tweet, data['enable_type']) and is_match_media_type(tweet, data['enable_media_type']):
                         try:
                             url = tweet.url
@@ -196,11 +237,14 @@ class AccountTracker():
                             msg = msg.format(mention=mention, author=author, action=action, url=url)
 
                             if EMBED_TYPE == 'proxy':
-                                await channel.send(msg, view=view)
+                                await channel.send(msg, view=view, embeds=mirror_embeds if mirror_embeds else [])
                             else:
                                 footer = 'twitter.png' if configs['embed']['built_in']['legacy_logo'] else 'x.png'
                                 file = discord.File(f'images/{footer}', filename='footer.png')
-                                await channel.send(msg, file=file, embeds=await gen_embed(tweet), view=view)
+                                embeds = await gen_embed(tweet)
+                                if mirror_embeds:
+                                    embeds.extend(mirror_embeds)
+                                await channel.send(msg, file=file, embeds=embeds, view=view)
 
                         except Exception as e:
                             if not isinstance(e, discord.errors.Forbidden):

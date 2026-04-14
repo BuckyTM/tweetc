@@ -18,6 +18,7 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS channel (id TEXT PRIMARY KEY, server_id TEXT);
             CREATE TABLE IF NOT EXISTS notification (user_id TEXT, channel_id TEXT, role_id TEXT, enabled INTEGER DEFAULT 1, enable_type TEXT DEFAULT 11, enable_media_type TEXT DEFAULT 11, customized_msg TEXT DEFAULT NULL, FOREIGN KEY (user_id) REFERENCES user (id), FOREIGN KEY (channel_id) REFERENCES channel (id), PRIMARY KEY(user_id, channel_id));
             CREATE TABLE IF NOT EXISTS server_user_config (server_id TEXT, user_id TEXT, translate TEXT, PRIMARY KEY(server_id, user_id), FOREIGN KEY (user_id) REFERENCES user (id));
+            CREATE TABLE IF NOT EXISTS mirror_channel (channel_id TEXT PRIMARY KEY, server_id TEXT, enabled INTEGER DEFAULT 1, media_types TEXT DEFAULT 'images,videos,gifs');
         """)
         await db.commit()
 
