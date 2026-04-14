@@ -215,6 +215,7 @@ class Mirror(Cog_Extension):
 
             embeds = []
             video_urls = []
+            failed_mirrors = 0
 
             for media in tweet_data['media']:
                 media_config_name = MEDIA_TYPE_MAP.get(media['type'])
@@ -223,6 +224,7 @@ class Mirror(Cog_Extension):
 
                 catbox_url = await upload_to_catbox(media['url'])
                 if not catbox_url:
+                    failed_mirrors += 1
                     continue
 
                 if media['type'] == 'photo':
@@ -233,12 +235,15 @@ class Mirror(Cog_Extension):
                     # Videos and GIFs: send as plain URLs so Discord auto-previews them
                     video_urls.append(catbox_url)
 
-            if not embeds and not video_urls:
+            if not embeds and not video_urls and failed_mirrors == 0:
                 continue
 
             content_parts = []
             if video_urls:
                 content_parts.extend(video_urls)
+            if failed_mirrors > 0:
+                content_parts.append(f"\n*⚠️ Warning: Failed to mirror {failed_mirrors} media file(s) to Catbox (Filehost timeout or file too large).*")
+            
             content = '\n'.join(content_parts) if content_parts else None
 
             try:

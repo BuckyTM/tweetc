@@ -185,6 +185,7 @@ class AccountTracker():
             for tweet in latest_tweets:
                 log.info(f'find a new tweet from {username}')
                 mirror_embeds = []
+                failed_mirrors = 0
                 if configs.get('mirror_media', {}).get('enabled', False) and tweet.media:
                     for media in tweet.media:
                         if media.type == 'photo':
@@ -193,6 +194,8 @@ class AccountTracker():
                                 embed = discord.Embed(title="Mirrored Image", url=catbox_url, description=f"[Link to image]({catbox_url})")
                                 embed.set_image(url=catbox_url)
                                 mirror_embeds.append(embed)
+                            else:
+                                failed_mirrors += 1
 
                 url = tweet.url
                 url = re.sub(r'(?:twitter|x)\.com', f'{DOMAIN_NAME}.com', url)
@@ -235,6 +238,9 @@ class AccountTracker():
                             if not data['customized_msg']: msg = configs['default_message']
                             else: msg = re.sub(r":(\w+):", lambda match: replace_emoji(match, channel.guild), data['customized_msg']) if configs['emoji_auto_format'] else data['customized_msg']
                             msg = msg.format(mention=mention, author=author, action=action, url=url)
+                            
+                            if failed_mirrors > 0:
+                                msg += f"\n\n*⚠️ Warning: Failed to mirror {failed_mirrors} image(s) to Catbox (Filehost timeout or file too large).* "
 
                             if EMBED_TYPE == 'proxy':
                                 await channel.send(msg, view=view, embeds=mirror_embeds if mirror_embeds else [])
