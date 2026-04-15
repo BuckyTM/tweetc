@@ -222,18 +222,18 @@ class Mirror(Cog_Extension):
                 if not media_config_name or media_config_name not in allowed_types:
                     continue
 
-                imgpile_url = await upload_to_imgpile(media['url'])
-                if not imgpile_url:
-                    failed_mirrors += 1
-                    continue
-
                 if media['type'] == 'photo':
+                    imgpile_url = await upload_to_imgpile(media['url'])
+                    if not imgpile_url:
+                        failed_mirrors += 1
+                        continue
                     embed = discord.Embed()
                     embed.set_image(url=imgpile_url)
                     embeds.append(embed)
                 else:
-                    # Videos and GIFs: send as plain URLs so Discord auto-previews them
-                    video_urls.append(imgpile_url)
+                    # Videos and GIFs: Imgpile often throws 500 errors for these.
+                    # Send the raw Twitter CDN MP4/GIF URL directly so Discord auto-previews it seamlessly.
+                    video_urls.append(media['url'])
 
             if not embeds and not video_urls and failed_mirrors == 0:
                 continue
