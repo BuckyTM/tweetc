@@ -1,5 +1,6 @@
 import aiohttp
 import asyncio
+import os
 from src.log import setup_logger
 
 log = setup_logger(__name__)
@@ -33,7 +34,10 @@ async def upload_to_catbox(file_url: str, max_retries: int = 3) -> str | None:
                 # Upload to Catbox
                 data = aiohttp.FormData()
                 data.add_field('reqtype', 'fileupload')
-                data.add_field('userhash', '') # Optional, leave empty for anonymous
+                
+                # Fetch userhash from .env to bypass datacenter IP restrictions
+                userhash = os.getenv('CATBOX_USERHASH', '')
+                data.add_field('userhash', userhash)
                 
                 # Extract filename from URL or use a default
                 filename = file_url.split('/')[-1].split('?')[0] or 'image.jpg'
