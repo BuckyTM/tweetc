@@ -1,4 +1,6 @@
 import os
+import io
+import aiohttp
 from typing import Union
 
 import aiosqlite
@@ -15,6 +17,23 @@ from src.utils import get_lock
 
 log = setup_logger(__name__)
 lock = get_lock()
+
+async def download_for_discord(url: str, max_size: int = 25 * 1024 * 1024) -> io.BytesIO | None:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=30) as resp:
+                if resp.status != 200:
+                    return None
+                length = resp.headers.get('Content-Length')
+                if length and int(length) > max_size:
+                    return None
+                data = await resp.read()
+                if len(data) > max_size:
+                    return None
+                return io.BytesIO(data)
+    except Exception as e:
+        log.error(f"Error downloading media for Discord attachment: {e}")
+        return None
 
 MEDIA_TYPE_CHOICES = [
     app_commands.Choice(name='All (images, videos, GIFs)', value='images,videos,gifs'),
@@ -215,6 +234,7 @@ class Mirror(Cog_Extension):
 
             embeds = []
             video_urls = []
+            discord_files = []
             failed_mirrors = 0
 
             for media in tweet_data['media']:
@@ -230,12 +250,26 @@ class Mirror(Cog_Extension):
                     embed = discord.Embed()
                     embed.set_image(url=imgpile_url)
                     embeds.append(embed)
+                elif media['type'] == 'gif':
+                    # Imgpile handles GIFs natively, so upload to Imgpile
+                    imgpile_url = await upload_to_imgpile(media['url'])
+                    if not imgpile_url:
+                        failed_mirrors += 1
+                        continue
+                    video_urls.append(imgpile_url)
                 else:
-                    # Videos and GIFs: Imgpile often throws 500 errors for these.
-                    # Send the raw Twitter CDN MP4/GIF URL directly so Discord auto-previews it seamlessly.
-                    video_urls.append(media['url'])
+                    # Videos: Download to memory and attach directly to Discord message (25MB limit)
+                    # This prevents the video from being lost if the tweet is deleted.
+                    video_bytes = await download_for_discord(media['url'])
+                    if video_bytes:
+                        # Create discord.File object
+                        filename = f"video_{tweet_id}.mp4"
+                        discord_files.append(discord.File(fp=video_bytes, filename=filename))
+                    else:
+                        # If video is >25MB or download fails, fallback to raw Twitter URL
+                        video_urls.append(media['url'])
 
-            if not embeds and not video_urls and failed_mirrors == 0:
+            if not embeds and not video_urls and not discord_files and failed_mirrors == 0:
                 continue
 
             content_parts = []
@@ -250,6 +284,7 @@ class Mirror(Cog_Extension):
                 await message.reply(
                     content=content,
                     embeds=embeds if embeds else [],
+                    files=discord_files,
                     mention_author=False
                 )
             except Exception as e:
