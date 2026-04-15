@@ -193,27 +193,20 @@ class AccountTracker():
                     tweet_data = await fetch_tweet_media(tweet.url)
                     if tweet_data and tweet_data.get('media'):
                         for media in tweet_data['media']:
-                            if media['type'] == 'photo' or media['type'] == 'gif':
+                            if media['type'] == 'photo':
                                 imgpile_url = await upload_to_imgpile(media['url'])
                                 if imgpile_url:
-                                    if media['type'] == 'photo':
-                                        embed = discord.Embed(title="Mirrored Image", url=imgpile_url, description=f"[Link to image]({imgpile_url})")
-                                        embed.set_image(url=imgpile_url)
-                                        mirror_embeds.append(embed)
-                                    # GIFs just need a link to embed, but since we are mirroring we might as well attach them if they are small enough, 
-                                    # but wait, user asked GIFs to Imgpile. For auto-notifications, if we just send the imgpile url, Discord will embed it.
-                                    # However, account_tracker already sends embeds array. To embed a GIF from imgpile natively, it's better to just add the URL to the main message content or as an embed.
-                                    elif media['type'] == 'gif':
-                                        embed = discord.Embed(title="Mirrored GIF", url=imgpile_url)
-                                        embed.set_image(url=imgpile_url)
-                                        mirror_embeds.append(embed)
+                                    embed = discord.Embed(title="Mirrored Image", url=imgpile_url, description=f"[Link to image]({imgpile_url})")
+                                    embed.set_image(url=imgpile_url)
+                                    mirror_embeds.append(embed)
                                 else:
                                     failed_mirrors += 1
                             else:
-                                # Video
+                                # Both Videos and GIFs (Twitter serves GIFs as MP4s)
                                 video_bytes = await download_for_discord(media['url'])
                                 if video_bytes:
-                                    filename = f"video_{tweet.id}.mp4"
+                                    ext = "mp4" if "mp4" in media['url'] else "gif"
+                                    filename = f"media_{tweet.id}.{ext}"
                                     # Store raw bytes and filename to recreate discord.File for multiple channels
                                     discord_files.append((video_bytes.getvalue(), filename))
                                 else:

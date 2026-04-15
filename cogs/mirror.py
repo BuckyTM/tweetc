@@ -232,20 +232,14 @@ class Mirror(Cog_Extension):
                     embed = discord.Embed()
                     embed.set_image(url=imgpile_url)
                     embeds.append(embed)
-                elif media['type'] == 'gif':
-                    # Imgpile handles GIFs natively, so upload to Imgpile
-                    imgpile_url = await upload_to_imgpile(media['url'])
-                    if not imgpile_url:
-                        failed_mirrors += 1
-                        continue
-                    video_urls.append(imgpile_url)
                 else:
-                    # Videos: Download to memory and attach directly to Discord message (25MB limit)
-                    # This prevents the video from being lost if the tweet is deleted.
+                    # Both Videos and GIFs: Twitter converts ALL GIFs to MP4 videos.
+                    # Since Imgpile crashes on MP4s, we must treat GIFs as videos and attach them to Discord.
                     video_bytes = await download_for_discord(media['url'])
                     if video_bytes:
                         # Create discord.File object
-                        filename = f"video_{tweet_id}.mp4"
+                        ext = "mp4" if "mp4" in media['url'] else "gif"
+                        filename = f"media_{tweet_id}.{ext}"
                         discord_files.append(discord.File(fp=video_bytes, filename=filename))
                     else:
                         # If video is >25MB or download fails, fallback to raw Twitter URL
