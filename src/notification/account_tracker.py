@@ -202,17 +202,13 @@ class AccountTracker():
                                 else:
                                     failed_mirrors += 1
                             else:
-                                # Both Videos and GIFs (Twitter serves GIFs as MP4s)
+                                # Both Videos and GIFs: Twitter serves GIFs as MP4s. We upload them to Discord native directly.
                                 video_bytes = await download_for_discord(media['url'])
                                 if video_bytes:
                                     ext = "mp4" if "mp4" in media['url'] else "gif"
                                     filename = f"media_{tweet.id}.{ext}"
                                     # Store raw bytes and filename to recreate discord.File for multiple channels
                                     discord_files.append((video_bytes.getvalue(), filename))
-                                else:
-                                    # We don't append raw URL here because the built_in embed handles it via the "View Video" button below
-                                    # but we can increment failed_mirrors to warn them the attachment failed.
-                                    pass
 
                 url = tweet.url
                 url = re.sub(r'(?:twitter|x)\.com', f'{DOMAIN_NAME}.com', url)

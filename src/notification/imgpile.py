@@ -57,10 +57,13 @@ async def upload_to_imgpile(file_url: str, max_retries: int = 3) -> str | None:
 
                 data = aiohttp.FormData()
                 
+                import mimetypes
+                
                 # Extract filename from URL or use a default
                 filename = file_url.split('/')[-1].split('?')[0] or 'image.jpg'
+                content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
                 
-                data.add_field('file', file_data, filename=filename)
+                data.add_field('file', file_data, filename=filename, content_type=content_type)
 
                 headers = {
                     'Authorization': f'Bearer {imgpile_token}'

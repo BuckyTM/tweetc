@@ -233,17 +233,20 @@ class Mirror(Cog_Extension):
                     embed.set_image(url=imgpile_url)
                     embeds.append(embed)
                 else:
-                    # Both Videos and GIFs: Twitter converts ALL GIFs to MP4 videos.
-                    # Since Imgpile crashes on MP4s, we must treat GIFs as videos and attach them to Discord.
-                    video_bytes = await download_for_discord(media['url'])
-                    if video_bytes:
-                        # Create discord.File object
-                        ext = "mp4" if "mp4" in media['url'] else "gif"
-                        filename = f"media_{tweet_id}.{ext}"
-                        discord_files.append(discord.File(fp=video_bytes, filename=filename))
+                    # Videos and GIFs: Attempt to upload to Imgpile first
+                    imgpile_url = await upload_to_imgpile(media['url'])
+                    if imgpile_url:
+                        video_urls.append(imgpile_url)
                     else:
-                        # If video is >25MB or download fails, fallback to raw Twitter URL
-                        video_urls.append(media['url'])
+                        # Fallback: Download to memory and attach directly to Discord message (25MB limit)
+                        video_bytes = await download_for_discord(media['url'])
+                        if video_bytes:
+                            ext = "mp4" if "mp4" in media['url'] else "gif"
+                            filename = f"media_{tweet_id}.{ext}"
+                            discord_files.append(discord.File(fp=video_bytes, filename=filename))
+                        else:
+                            # If video is >25MB or download fails, fallback to raw Twitter URL
+                            video_urls.append(media['url'])
 
             if not embeds and not video_urls and not discord_files and failed_mirrors == 0:
                 continue
