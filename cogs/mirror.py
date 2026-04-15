@@ -8,7 +8,7 @@ from discord.ext import commands
 
 from core.classes import Cog_Extension
 from src.log import setup_logger
-from src.notification.catbox import upload_to_catbox
+from src.notification.imgpile import upload_to_imgpile
 from src.notification.tweet_media import fetch_tweet_media, TWEET_URL_PATTERN
 from src.permission import ADMINISTRATOR
 from src.utils import get_lock
@@ -222,18 +222,18 @@ class Mirror(Cog_Extension):
                 if not media_config_name or media_config_name not in allowed_types:
                     continue
 
-                catbox_url = await upload_to_catbox(media['url'])
-                if not catbox_url:
+                imgpile_url = await upload_to_imgpile(media['url'])
+                if not imgpile_url:
                     failed_mirrors += 1
                     continue
 
                 if media['type'] == 'photo':
                     embed = discord.Embed()
-                    embed.set_image(url=catbox_url)
+                    embed.set_image(url=imgpile_url)
                     embeds.append(embed)
                 else:
                     # Videos and GIFs: send as plain URLs so Discord auto-previews them
-                    video_urls.append(catbox_url)
+                    video_urls.append(imgpile_url)
 
             if not embeds and not video_urls and failed_mirrors == 0:
                 continue
@@ -242,7 +242,7 @@ class Mirror(Cog_Extension):
             if video_urls:
                 content_parts.extend(video_urls)
             if failed_mirrors > 0:
-                content_parts.append(f"\n*⚠️ Warning: Failed to mirror {failed_mirrors} media file(s) to Catbox (Filehost timeout or file too large).*")
+                content_parts.append(f"\n*⚠️ Warning: Failed to mirror {failed_mirrors} media file(s) to Imgpile (Filehost timeout or file too large).*")
             
             content = '\n'.join(content_parts) if content_parts else None
 

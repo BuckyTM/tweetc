@@ -11,7 +11,7 @@ from tweety import Twitter
 
 from configs.load_configs import configs
 from src.log import setup_logger
-from src.notification.catbox import upload_to_catbox
+from src.notification.imgpile import upload_to_imgpile
 from src.notification.display_tools import gen_embed, get_action
 from src.notification.get_tweets import get_tweets
 from src.notification.utils import is_match_media_type, is_match_type, replace_emoji
@@ -189,10 +189,10 @@ class AccountTracker():
                 if configs.get('mirror_media', {}).get('enabled', False) and tweet.media:
                     for media in tweet.media:
                         if media.type == 'photo':
-                            catbox_url = await upload_to_catbox(media.media_url_https)
-                            if catbox_url:
-                                embed = discord.Embed(title="Mirrored Image", url=catbox_url, description=f"[Link to image]({catbox_url})")
-                                embed.set_image(url=catbox_url)
+                            imgpile_url = await upload_to_imgpile(media.media_url_https)
+                            if imgpile_url:
+                                embed = discord.Embed(title="Mirrored Image", url=imgpile_url, description=f"[Link to image]({imgpile_url})")
+                                embed.set_image(url=imgpile_url)
                                 mirror_embeds.append(embed)
                             else:
                                 failed_mirrors += 1
@@ -240,7 +240,7 @@ class AccountTracker():
                             msg = msg.format(mention=mention, author=author, action=action, url=url)
                             
                             if failed_mirrors > 0:
-                                msg += f"\n\n*⚠️ Warning: Failed to mirror {failed_mirrors} image(s) to Catbox (Filehost timeout or file too large).* "
+                                msg += f"\n\n*⚠️ Warning: Failed to mirror {failed_mirrors} image(s) to Imgpile (Filehost timeout or file too large).* "
 
                             if EMBED_TYPE == 'proxy':
                                 await channel.send(msg, view=view, embeds=mirror_embeds if mirror_embeds else [])
