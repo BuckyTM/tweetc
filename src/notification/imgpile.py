@@ -1,9 +1,27 @@
 import aiohttp
 import asyncio
 import os
+import io
 from src.log import setup_logger
 
 log = setup_logger(__name__)
+
+async def download_for_discord(url: str, max_size: int = 25 * 1024 * 1024) -> io.BytesIO | None:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=30) as resp:
+                if resp.status != 200:
+                    return None
+                length = resp.headers.get('Content-Length')
+                if length and int(length) > max_size:
+                    return None
+                data = await resp.read()
+                if len(data) > max_size:
+                    return None
+                return io.BytesIO(data)
+    except Exception as e:
+        log.error(f"Error downloading media for Discord attachment: {e}")
+        return None
 
 async def upload_to_imgpile(file_url: str, max_retries: int = 3) -> str | None:
     """

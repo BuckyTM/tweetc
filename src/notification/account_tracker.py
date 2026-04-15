@@ -11,9 +11,10 @@ from tweety import Twitter
 
 from configs.load_configs import configs
 from src.log import setup_logger
-from src.notification.imgpile import upload_to_imgpile
+from src.notification.imgpile import upload_to_imgpile, download_for_discord
 from src.notification.display_tools import gen_embed, get_action
 from src.notification.get_tweets import get_tweets
+from src.notification.tweet_media import fetch_tweet_media
 from src.notification.utils import is_match_media_type, is_match_type, replace_emoji
 from src.utils import get_accounts, get_lock, get_utcnow
 from src.db_function.readonly_db import connect_readonly
@@ -185,17 +186,40 @@ class AccountTracker():
             for tweet in latest_tweets:
                 log.info(f'find a new tweet from {username}')
                 mirror_embeds = []
+                discord_files = []
                 failed_mirrors = 0
+                
                 if configs.get('mirror_media', {}).get('enabled', False) and tweet.media:
-                    for media in tweet.media:
-                        if media.type == 'photo':
-                            imgpile_url = await upload_to_imgpile(media.media_url_https)
-                            if imgpile_url:
-                                embed = discord.Embed(title="Mirrored Image", url=imgpile_url, description=f"[Link to image]({imgpile_url})")
-                                embed.set_image(url=imgpile_url)
-                                mirror_embeds.append(embed)
+                    tweet_data = await fetch_tweet_media(tweet.url)
+                    if tweet_data and tweet_data.get('media'):
+                        for media in tweet_data['media']:
+                            if media['type'] == 'photo' or media['type'] == 'gif':
+                                imgpile_url = await upload_to_imgpile(media['url'])
+                                if imgpile_url:
+                                    if media['type'] == 'photo':
+                                        embed = discord.Embed(title="Mirrored Image", url=imgpile_url, description=f"[Link to image]({imgpile_url})")
+                                        embed.set_image(url=imgpile_url)
+                                        mirror_embeds.append(embed)
+                                    # GIFs just need a link to embed, but since we are mirroring we might as well attach them if they are small enough, 
+                                    # but wait, user asked GIFs to Imgpile. For auto-notifications, if we just send the imgpile url, Discord will embed it.
+                                    # However, account_tracker already sends embeds array. To embed a GIF from imgpile natively, it's better to just add the URL to the main message content or as an embed.
+                                    elif media['type'] == 'gif':
+                                        embed = discord.Embed(title="Mirrored GIF", url=imgpile_url)
+                                        embed.set_image(url=imgpile_url)
+                                        mirror_embeds.append(embed)
+                                else:
+                                    failed_mirrors += 1
                             else:
-                                failed_mirrors += 1
+                                # Video
+                                video_bytes = await download_for_discord(media['url'])
+                                if video_bytes:
+                                    filename = f"video_{tweet.id}.mp4"
+                                    # Store raw bytes and filename to recreate discord.File for multiple channels
+                                    discord_files.append((video_bytes.getvalue(), filename))
+                                else:
+                                    # We don't append raw URL here because the built_in embed handles it via the "View Video" button below
+                                    # but we can increment failed_mirrors to warn them the attachment failed.
+                                    pass
 
                 url = tweet.url
                 url = re.sub(r'(?:twitter|x)\.com', f'{DOMAIN_NAME}.com', url)
@@ -243,14 +267,19 @@ class AccountTracker():
                                 msg += f"\n\n*⚠️ Warning: Failed to mirror {failed_mirrors} image(s) to Imgpile (Filehost timeout or file too large).* "
 
                             if EMBED_TYPE == 'proxy':
-                                await channel.send(msg, view=view, embeds=mirror_embeds if mirror_embeds else [])
+                                import io
+                                to_send = [discord.File(fp=io.BytesIO(b), filename=f) for b, f in discord_files]
+                                await channel.send(msg, view=view, embeds=mirror_embeds if mirror_embeds else [], files=to_send)
                             else:
+                                import io
                                 footer = 'twitter.png' if configs['embed']['built_in']['legacy_logo'] else 'x.png'
-                                file = discord.File(f'images/{footer}', filename='footer.png')
+                                to_send = [discord.File(f'images/{footer}', filename='footer.png')]
+                                to_send.extend([discord.File(fp=io.BytesIO(b), filename=f) for b, f in discord_files])
+                                
                                 embeds = await gen_embed(tweet)
                                 if mirror_embeds:
                                     embeds.extend(mirror_embeds)
-                                await channel.send(msg, file=file, embeds=embeds, view=view)
+                                await channel.send(msg, files=to_send, embeds=embeds, view=view)
 
                         except Exception as e:
                             if not isinstance(e, discord.errors.Forbidden):

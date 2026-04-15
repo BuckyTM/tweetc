@@ -1,5 +1,4 @@
 import os
-import io
 import aiohttp
 from typing import Union
 
@@ -10,30 +9,13 @@ from discord.ext import commands
 
 from core.classes import Cog_Extension
 from src.log import setup_logger
-from src.notification.imgpile import upload_to_imgpile
+from src.notification.imgpile import upload_to_imgpile, download_for_discord
 from src.notification.tweet_media import fetch_tweet_media, TWEET_URL_PATTERN
 from src.permission import ADMINISTRATOR
 from src.utils import get_lock
 
 log = setup_logger(__name__)
 lock = get_lock()
-
-async def download_for_discord(url: str, max_size: int = 25 * 1024 * 1024) -> io.BytesIO | None:
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=30) as resp:
-                if resp.status != 200:
-                    return None
-                length = resp.headers.get('Content-Length')
-                if length and int(length) > max_size:
-                    return None
-                data = await resp.read()
-                if len(data) > max_size:
-                    return None
-                return io.BytesIO(data)
-    except Exception as e:
-        log.error(f"Error downloading media for Discord attachment: {e}")
-        return None
 
 MEDIA_TYPE_CHOICES = [
     app_commands.Choice(name='All (images, videos, GIFs)', value='images,videos,gifs'),
