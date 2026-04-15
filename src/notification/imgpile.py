@@ -51,9 +51,21 @@ async def upload_to_imgpile(file_url: str, max_retries: int = 3) -> str | None:
                 async with session.post('https://cdn.imgpile.com/api/v1/media', data=data, headers=headers, timeout=30) as resp:
                     if resp.status in [200, 201]:
                         result = await resp.json()
-                        imgpile_url = result.get('media', {}).get('urls', {}).get('original')
+                        media_obj = result.get('media', {})
+                        
+                        # Try to get from urls object first
+                        imgpile_url = media_obj.get('urls', {}).get('original')
+                        
+                        # If urls object is missing, manually construct it per their docs
+                        if not imgpile_url:
+                            filename = media_obj.get('filename')
+                            ext = media_obj.get('ext')
+                            if filename and ext:
+                                imgpile_url = f"https://cdn.imgpile.com/f/{filename}.{ext}"
+
                         if imgpile_url:
                             return imgpile_url
+                            
                         log.error(f"Imgpile returned success but no original URL was found: {result}")
                         return None
                     else:
